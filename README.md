@@ -6,8 +6,9 @@ Gloamy daemon built and released by the
 [backend repository](https://github.com/averyfreeman/gloamy-app-server-oauth2).
 
 The desktop app and browser UI are separate projects. The desktop repository
-pins an exact web UI commit, so updating the desktop frontend is an explicit
-submodule change.
+pins an exact web UI commit; UI source changes flow through a reviewable desktop
+pin PR. See the UI repository's [source ownership and sync
+guide](https://github.com/averyfreeman/gloamy-fork-ui/blob/main/docs/desktop-sync.md).
 
 ## Prerequisites
 
@@ -29,10 +30,11 @@ pnpm tauri:dev
 ```
 
 The build copies the pinned UI submodule into an ignored working directory and
-applies the desktop-owned `patches/ui-desktop.patch` overlay there. It leaves
-the submodule checkout clean. The build script downloads the host-matching
-daemon binary from backend release `v0.2.2`, verifies it against `SHA256SUMS`,
-and stages it as a Tauri resource. For local development against a locally built daemon, set
+injects the typed Tauri adapter at the shared platform boundary. Shared Vue
+screens remain in the UI repository, and the submodule checkout stays clean.
+The build script downloads the host-matching daemon binary from backend release
+`v0.2.2`, verifies it against `SHA256SUMS`, and stages it as a Tauri resource.
+For local development against a locally built daemon, set
 `GLOAMY_SIDECAR_PATH=/absolute/path/to/gloamy`.
 
 To produce a native bundle:
@@ -41,7 +43,7 @@ To produce a native bundle:
 pnpm tauri:build
 ```
 
-Desktop bridge and browser UI unit tests:
+Desktop adapter unit tests and browser smoke tests for both UI runtimes:
 
 ```bash
 ./scripts/prepare-ui.sh test

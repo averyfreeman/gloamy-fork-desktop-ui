@@ -424,6 +424,7 @@ fn resolve_daemon_binary(app: &AppHandle) -> Result<PathBuf, String> {
 fn read_desktop_info(binary: &Path) -> Result<DesktopInfo, String> {
     let output = Command::new(binary)
         .arg("desktop-info")
+        .env("RUST_LOG", "off")
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
@@ -772,5 +773,33 @@ mod tests {
         .unwrap();
 
         assert_eq!(response.gateway_version, None);
+    }
+
+    #[test]
+    fn desktop_info_ignores_sidecar_logs_before_json() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let binary = std::env::temp_dir().join(format!(
+            "gloamy-desktop-info-test-{}-{nonce}",
+            std::process::id()
+        ));
+        fs::write(
+            &binary,
+            "#!/bin/sh\nif [ \"${RUST_LOG:-}\" != \"off\" ]; then printf 'INFO config loaded\\n'; fi\nprintf '{\\\"gateway_host\\\":\\\"127.0.0.1\\\",\\\"gateway_port\\\":42617}\\n'\n",
+        )
+        .unwrap();
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
+
+        let result = read_desktop_info(&binary);
+        fs::remove_file(binary).unwrap();
+
+        let info = result.unwrap();
+        assert_eq!(info.gateway_host, "127.0.0.1");
+        assert_eq!(info.gateway_port, 42617);
     }
 }
