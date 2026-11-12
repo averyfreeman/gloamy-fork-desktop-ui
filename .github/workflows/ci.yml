@@ -79,6 +79,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.99.1
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Download native Gloamy sidecar
         run: ./scripts/prepare-backend-sidecar.sh
