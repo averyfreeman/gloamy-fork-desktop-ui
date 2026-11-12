@@ -17,8 +17,35 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  ui-parity:
+    name: Shared UI and desktop adapter checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ui/.nvmrc
+          cache: pnpm
+          cache-dependency-path: ui/pnpm-lock.yaml
+      - name: Install web UI dependencies
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright Chromium
+        working-directory: ui
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Test browser and desktop UI variants
+        run: ./scripts/prepare-ui.sh test
+
   build:
     name: Build (${{ matrix.target }})
+    needs: ui-parity
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -64,8 +91,6 @@ jobs:
       - name: Install web UI dependencies
         working-directory: ui
         run: pnpm install --frozen-lockfile
-      - name: Test desktop UI overlay
-        run: ./scripts/prepare-ui.sh test
       - name: Build native desktop app
         run: pnpm exec tauri build --bundles ${{ matrix.bundle }} --ci
 

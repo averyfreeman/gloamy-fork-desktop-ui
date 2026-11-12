@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-describe('desktop bridge', () => {
+describe('desktop capability adapter', () => {
   afterEach(() => {
     Reflect.deleteProperty(window, '__TAURI__')
     vi.resetModules()
   })
 
-  it('reports daemon status and pairing through typed commands', async () => {
-    const invoke = vi.fn(async (command: string) => {
+  it('uses typed commands for daemon status, pairing, and daemon preference', async () => {
+    const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
       if (command === 'get_daemon_status') {
         return {
           ready: true,
@@ -17,22 +17,41 @@ describe('desktop bridge', () => {
           error: null,
         }
       }
-      return '123456'
+      if (command === 'request_pairing_code')
+        return '123456'
+      if (command === 'get_keep_daemon_running')
+        return false
+      if (command === 'set_keep_daemon_running') {
+        expect(args).toEqual({ keepRunning: true })
+        return undefined
+      }
+      throw new Error(`Unexpected desktop command: ${command}`)
     })
     Object.defineProperty(window, '__TAURI__', {
       configurable: true,
       value: { core: { invoke } },
     })
 
-    const desktop = await import('@/lib/desktop')
-    expect(desktop.isDesktopApp).toBe(true)
+    const platform = await import('@/lib/platform')
+    const desktop = platform.desktopCapabilities
+    expect(platform.isDesktopApp).toBe(true)
+    expect(desktop).toBeDefined()
+    if (!desktop)
+      throw new Error('Desktop capabilities should be available when Tauri core exists.')
+
     expect((await desktop.getDaemonStatus()).gateway_version).toBe('0.2.2')
     expect(await desktop.requestPairingCode()).toBe('123456')
-    expect(invoke).toHaveBeenCalledWith('get_daemon_status', undefined)
-    expect(invoke).toHaveBeenCalledWith('request_pairing_code', undefined)
+    expect(await desktop.getKeepDaemonRunning()).toBe(false)
+    await desktop.setKeepDaemonRunning(true)
+    expect(invoke.mock.calls).toEqual([
+      ['get_daemon_status', undefined],
+      ['request_pairing_code', undefined],
+      ['get_keep_daemon_running', undefined],
+      ['set_keep_daemon_running', { keepRunning: true }],
+    ])
   })
 
-  it('handles a legacy daemon that does not report a version', async () => {
+  it('keeps gateway version optional for older daemons', async () => {
     const invoke = vi.fn(async () => ({
       ready: true,
       api_base_url: 'http://127.0.0.1:42617',
@@ -44,7 +63,12 @@ describe('desktop bridge', () => {
       value: { core: { invoke } },
     })
 
-    const desktop = await import('@/lib/desktop')
+    const platform = await import('@/lib/platform')
+    const desktop = platform.desktopCapabilities
+    expect(desktop).toBeDefined()
+    if (!desktop)
+      throw new Error('Desktop capabilities should be available when Tauri core exists.')
+
     expect((await desktop.getDaemonStatus()).gateway_version).toBeUndefined()
   })
 })
