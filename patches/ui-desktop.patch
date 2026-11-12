@@ -1,0 +1,284 @@
+--- a/src/stores/auth.ts
++++ b/src/stores/auth.ts
+@@ -3,0 +4 @@
++import { getDaemonStatus, isDesktopApp, type DesktopRuntime } from '@/lib/desktop'
+@@ -22,0 +24 @@
++  const desktopRuntime = ref<DesktopRuntime | null>(null)
+@@ -29,0 +32,15 @@
++    if (isDesktopApp) {
++      try {
++        desktopRuntime.value = await getDaemonStatus()
++        baseUrl.value = desktopRuntime.value.api_base_url ?? ''
++      }
++      catch (error) {
++        desktopRuntime.value = {
++          ready: false,
++          api_base_url: null,
++          desktop_managed: false,
++          error: error instanceof Error ? error.message : 'Unable to connect to the desktop daemon manager.',
++        }
++      }
++    }
++
+@@ -35,3 +52,5 @@
+-      const storedBaseUrl = await store.get<string>(BASE_URL_KEY)
+-      if (typeof storedBaseUrl === 'string' && storedBaseUrl.trim().length > 0)
+-        baseUrl.value = storedBaseUrl
++      if (!isDesktopApp) {
++        const storedBaseUrl = await store.get<string>(BASE_URL_KEY)
++        if (typeof storedBaseUrl === 'string' && storedBaseUrl.trim().length > 0)
++          baseUrl.value = storedBaseUrl
++      }
+@@ -77,0 +97,2 @@
++    if (isDesktopApp)
++      return
+@@ -129,0 +151,2 @@
++    isDesktopApp,
++    desktopRuntime,
+--- a/src/pages/authentication.vue
++++ b/src/pages/authentication.vue
+@@ -3,0 +4,2 @@
++import { useI18n } from 'vue-i18n'
++import { requestPairingCode } from '@/lib/desktop'
+@@ -7,0 +10 @@
++const { t } = useI18n()
+@@ -15,0 +19,3 @@
++const recoveryCode = ref('')
++const isDesktop = computed(() => auth.isDesktopApp)
++const desktopError = computed(() => auth.desktopRuntime?.error ?? '')
+@@ -71,0 +78,27 @@
++async function requestLocalPairingCode() {
++  resetMessages()
++  loading.value = true
++  try {
++    const nextCode = await requestPairingCode()
++    code.value = nextCode
++    recoveryCode.value = nextCode
++    notice.value = t('desktop.recoveryReady')
++  }
++  catch (err) {
++    error.value = err instanceof Error ? err.message : t('desktop.recoveryUnavailable')
++  }
++  finally {
++    loading.value = false
++  }
++}
++
++async function copyRecoveryCode() {
++  try {
++    await navigator.clipboard.writeText(recoveryCode.value)
++    notice.value = t('desktop.codeCopied')
++  }
++  catch (err) {
++    error.value = err instanceof Error ? err.message : t('desktop.copyFailed')
++  }
++}
++
+@@ -101,5 +133,0 @@
+-    return
+-  }
+-
+-  if (trimmedCode.length >= 6 && daemonPaired.value === true) {
+-    error.value = 'This daemon is already paired. Pairing codes are only available on first setup. Paste an existing bearer token (zc_...) or clear gateway.paired_tokens in config.toml and restart the daemon to re-pair.'
+@@ -152 +180 @@
+-    <div class="grid h-full w-full grid-cols-1 overflow-y-auto md:grid-cols-2">
++    <div class="grid h-full w-full grid-cols-2">
+@@ -167 +195,5 @@
+-                <div v-if="authState === 'unreachable'" class="text-sm text-red-500 font-bold text-center">
++                <div v-if="desktopError" class="text-sm text-red-500 font-medium text-center">
++                  {{ desktopError }}
++                </div>
++
++                <div v-if="authState === 'unreachable' && !desktopError" class="text-sm text-red-500 font-bold text-center">
+@@ -171 +203 @@
+-                <div class="space-y-1.5">
++                <div v-if="!isDesktop" class="space-y-1.5">
+@@ -195 +227,20 @@
+-                  This daemon is already paired. If you lost your bearer token, clear gateway.paired_tokens in config.toml and restart the daemon to generate a new pairing code.
++                  {{ isDesktop ? t('desktop.recoveryHelp') : t('desktop.browserRecoveryHelp') }}
++                </div>
++
++                <button
++                  v-if="isDesktop"
++                  class="w-full h-10 border border-border hover:bg-muted/30 rounded-xl text-sm font-medium transition-all disabled:opacity-40"
++                  :disabled="loading"
++                  @click="requestLocalPairingCode"
++                >
++                  {{ t('desktop.requestPairingCode') }}
++                </button>
++
++                <div v-if="recoveryCode" class="flex items-center gap-2 rounded-xl border border-border bg-muted/20 p-3">
++                  <code class="flex-1 text-center font-mono text-lg tracking-[0.3em]">{{ recoveryCode }}</code>
++                  <button
++                    class="shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted/30"
++                    @click="copyRecoveryCode"
++                  >
++                    {{ t('desktop.copyCode') }}
++                  </button>
+--- a/src/pages/settings.vue
++++ b/src/pages/settings.vue
+@@ -6,0 +7,2 @@
++import { useI18n } from 'vue-i18n'
++import { getKeepDaemonRunning, isDesktopApp, requestPairingCode, setKeepDaemonRunning } from '@/lib/desktop'
+@@ -10,0 +13 @@
++const { t } = useI18n()
+@@ -12,0 +16,4 @@
++const keepDaemonRunning = ref(false)
++const savingKeepRunning = ref(false)
++const pairingCode = ref('')
++const desktopError = ref('')
+@@ -15,3 +22,12 @@
+-  const t = await settingsStore.getSetting<string>('theme')
+-  if (t === 'light' || t === 'dark' || t === 'auto') {
+-    selectedTheme.value = t
++  const theme = await settingsStore.getSetting<string>('theme')
++  if (theme === 'light' || theme === 'dark' || theme === 'auto') {
++    selectedTheme.value = theme
++  }
++
++  if (isDesktopApp) {
++    try {
++      keepDaemonRunning.value = await getKeepDaemonRunning()
++    }
++    catch (error) {
++      desktopError.value = error instanceof Error ? error.message : t('desktop.preferencesUnavailable')
++    }
+@@ -19,0 +36,35 @@
++
++async function saveKeepRunning() {
++  savingKeepRunning.value = true
++  desktopError.value = ''
++  try {
++    await setKeepDaemonRunning(keepDaemonRunning.value)
++  }
++  catch (error) {
++    keepDaemonRunning.value = !keepDaemonRunning.value
++    desktopError.value = error instanceof Error ? error.message : t('desktop.preferencesUnavailable')
++  }
++  finally {
++    savingKeepRunning.value = false
++  }
++}
++
++async function recoverPairing() {
++  pairingCode.value = ''
++  desktopError.value = ''
++  try {
++    pairingCode.value = await requestPairingCode()
++  }
++  catch (error) {
++    desktopError.value = error instanceof Error ? error.message : t('desktop.recoveryUnavailable')
++  }
++}
++
++async function copyPairingCode() {
++  try {
++    await navigator.clipboard.writeText(pairingCode.value)
++  }
++  catch (error) {
++    desktopError.value = error instanceof Error ? error.message : t('desktop.copyFailed')
++  }
++}
+@@ -142,0 +194,48 @@
++      <section v-if="isDesktopApp" class="space-y-4">
++        <div class="flex items-center gap-2">
++          <Icon icon="hugeicons:computer-settings" class="size-[15px] text-muted-foreground" />
++          <h2 class="text-[13px] font-medium text-muted-foreground">{{ t('desktop.sectionTitle') }}</h2>
++        </div>
++
++        <div class="flex items-center justify-between gap-4 py-2 px-1">
++          <div>
++            <p class="text-[13px] font-medium text-foreground">{{ t('desktop.keepRunningTitle') }}</p>
++            <p class="text-[12px] text-muted-foreground mt-0.5">{{ t('desktop.keepRunningHelp') }}</p>
++          </div>
++          <input
++            v-model="keepDaemonRunning"
++            type="checkbox"
++            class="size-4 accent-primary"
++            :disabled="savingKeepRunning"
++            :aria-label="t('desktop.keepRunningTitle')"
++            @change="saveKeepRunning"
++          >
++        </div>
++
++        <div class="flex items-center justify-between gap-4 py-2 px-1">
++          <div>
++            <p class="text-[13px] font-medium text-foreground">{{ t('desktop.recoveryAction') }}</p>
++            <p class="text-[12px] text-muted-foreground mt-0.5">{{ t('desktop.recoveryHelp') }}</p>
++          </div>
++          <button
++            class="flex items-center gap-1.5 px-3 py-1.5 border border-border hover:border-foreground/30 text-foreground transition-colors rounded-lg text-[12px] font-medium shrink-0"
++            @click="recoverPairing"
++          >
++            {{ t('desktop.requestPairingCode') }}
++          </button>
++        </div>
++
++        <div v-if="pairingCode" class="flex items-center gap-2 rounded-xl border border-border bg-muted/20 p-3">
++          <code class="flex-1 text-center font-mono text-lg tracking-[0.3em]">{{ pairingCode }}</code>
++          <button
++            class="shrink-0 rounded-lg border border-border px-3 py-2 text-xs font-medium hover:bg-muted/30"
++            @click="copyPairingCode"
++          >
++            {{ t('desktop.copyCode') }}
++          </button>
++        </div>
++        <p v-if="desktopError" class="text-xs text-red-500">{{ desktopError }}</p>
++      </section>
++
++      <hr v-if="isDesktopApp" class="border-border/30" />
++
+--- a/src/i18n/locales/en.json
++++ b/src/i18n/locales/en.json
+@@ -68,0 +69,15 @@
++  },
++  "desktop": {
++    "sectionTitle": "Desktop application",
++    "keepRunningTitle": "Keep daemon running after closing",
++    "keepRunningHelp": "Leave the managed daemon available to the browser UI when this app closes. When off, the app stops its managed daemon on close.",
++    "recoveryAction": "Pairing recovery",
++    "recoveryHelp": "Request a single-use pairing code without changing existing paired devices.",
++    "requestPairingCode": "Request one-time pairing code",
++    "recoveryReady": "One-time pairing code is ready. Enter it to finish pairing.",
++    "recoveryUnavailable": "Could not request a local pairing code.",
++    "copyCode": "Copy code",
++    "codeCopied": "Pairing code copied.",
++    "copyFailed": "Could not copy the pairing code.",
++    "browserRecoveryHelp": "For this already paired daemon, use the desktop app to request a one-time pairing code or paste an existing bearer token.",
++    "preferencesUnavailable": "Desktop preferences are unavailable."
+--- a/src/i18n/locales/fr.json
++++ b/src/i18n/locales/fr.json
+@@ -239,0 +240,15 @@
++  },
++  "desktop": {
++    "sectionTitle": "Application de bureau",
++    "keepRunningTitle": "Garder le daemon actif après la fermeture",
++    "keepRunningHelp": "Laisser le daemon géré accessible depuis l'interface web après la fermeture de l'application. Désactivé, l'application arrête son daemon à la fermeture.",
++    "recoveryAction": "Récupération de l'association",
++    "recoveryHelp": "Demander un code à usage unique sans modifier les appareils déjà associés.",
++    "requestPairingCode": "Demander un code d'association",
++    "recoveryReady": "Le code à usage unique est prêt. Saisissez-le pour terminer l'association.",
++    "recoveryUnavailable": "Impossible de demander un code local.",
++    "copyCode": "Copier le code",
++    "codeCopied": "Code d'association copié.",
++    "copyFailed": "Impossible de copier le code d'association.",
++    "browserRecoveryHelp": "Pour ce daemon déjà associé, utilisez l'application de bureau pour demander un code à usage unique ou collez un jeton existant.",
++    "preferencesUnavailable": "Les préférences de bureau sont indisponibles."
+--- a/src/i18n/locales/tr.json
++++ b/src/i18n/locales/tr.json
+@@ -239,0 +240,15 @@
++  },
++  "desktop": {
++    "sectionTitle": "Masaüstü uygulaması",
++    "keepRunningTitle": "Kapattıktan sonra arka plan hizmetini çalışır tut",
++    "keepRunningHelp": "Uygulama kapandığında yönetilen hizmeti web arayüzü için kullanılabilir bırakır. Kapalıysa uygulama kapanırken kendi hizmetini durdurur.",
++    "recoveryAction": "Eşleştirme kurtarma",
++    "recoveryHelp": "Mevcut eşleştirilmiş cihazları değiştirmeden tek kullanımlık bir kod isteyin.",
++    "requestPairingCode": "Tek kullanımlık eşleştirme kodu iste",
++    "recoveryReady": "Tek kullanımlık eşleştirme kodu hazır. Eşleştirmeyi tamamlamak için kodu girin.",
++    "recoveryUnavailable": "Yerel eşleştirme kodu istenemedi.",
++    "copyCode": "Kodu kopyala",
++    "codeCopied": "Eşleştirme kodu kopyalandı.",
++    "copyFailed": "Eşleştirme kodu kopyalanamadı.",
++    "browserRecoveryHelp": "Bu daemon zaten eşleştirilmiş. Tek kullanımlık kod istemek için masaüstü uygulamasını kullanın veya mevcut bearer token'ı yapıştırın.",
++    "preferencesUnavailable": "Masaüstü tercihleri kullanılamıyor."

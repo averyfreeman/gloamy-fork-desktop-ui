@@ -1,0 +1,13 @@
+/node_modules/
+/target/
+/ui/node_modules/
+/ui/dist/
+/.desktop-build/
+/src-tauri/target/
+/src-tauri/resources/gloamy
+/src-tauri/gen/schemas/
+/dist/
+/release-assets/
+.env
+.env.*
+.DS_Store
