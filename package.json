@@ -1,0 +1,15 @@
+{
+  "name": "gloamy-fork-desktop-ui",
+  "private": true,
+  "version": "0.1.1",
+  "type": "module",
+  "packageManager": "pnpm@12.18.0",
+  "scripts": {
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.0"
+  }
+}
